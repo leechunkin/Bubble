@@ -1,5 +1,5 @@
 {-
-Common Patterns
+Some useful patterns
 -}
 
 module Text.Parser.Common
@@ -20,7 +20,7 @@ import Prelude
 		Num (fromInteger, (+), (*), negate),
 		Integer, Double,
 		($!), fromIntegral, pred, (^^))
-import Data.Bool (Bool (True, False), not, (&&))
+import Data.Bool (Bool (True, False), otherwise, not, (&&))
 import Data.Char
 	(
 		Char, chr,
@@ -28,26 +28,28 @@ import Data.Char
 		isDigit, isOctDigit, isHexDigit,
 		isLetter, isUpper, isLower, isAlphaNum,
 		digitToInt)
-import Data.Word (Word)
 import Data.List (foldl', (++), length)
 import Data.String (String)
 import Data.Eq ((/=))
+import Data.Ord ((<))
 import Data.Functor ((<$>), (<$))
 import Control.Applicative (pure, (<*>), (<*), (*>), some, many)
 
 repeating :: Integral i => i -> Pattern s c r a -> Pattern s c r [a]
-repeating i p
+repeating n p
 	= let
-		r 0 = pure []
-		r j = (:) <$> p <*> (r $! pred j)
-	in r (fromIntegral i :: Word)
+		r i
+			| i < 1     = pure []
+			| otherwise = (:) <$> p <*> (r $! pred i)
+	in r n
 
 atmost :: Integral i => i -> Pattern s c r a -> Pattern s c r [a]
-atmost i p
+atmost n p
 	= let
-		r 0 = pure []
-		r j = cases [pure [], (:) <$> p <*> (r $! pred j)]
-	in r (fromIntegral i :: Word)
+		r i
+			| i < 1     = pure []
+			| otherwise = cases [pure [], (:) <$> p <*> (r $! pred i)]
+	in r n
 
 newline :: Pattern s Char r Char
 newline = match '\n'
@@ -118,8 +120,11 @@ hexadecimal =
 		<$> some hexDigit
 
 unsignedInteger :: Pattern s Char r Integer
+{-
+Integer number literal in Haskell 2010
+Note that it can never be negative number.
+-}
 unsignedInteger = cases
--- Integer number literal in Haskell 2010
 	[ decimal
 	, string "0O" *> octal
 	, string "0o" *> octal
@@ -156,8 +161,11 @@ float
 		]
 
 unsignedFloat :: Pattern s Char r Double
+{-
+Floating point number literal in Haskell 2010
+Same as integer, it can never be negative.
+-}
 unsignedFloat
--- Floating point number literal in Haskell 2010
 	= (\ i f (v, e) -> convert_float False i v e f)
 		<$> some digit
 			<* match '.' <*> some digit
@@ -172,7 +180,9 @@ signedFloat = signing <$> sign unsignedFloat
 
 quotedString :: Pattern s Char r String
 quotedString
--- String literal in Haskell 2010
+{-
+String literal in Haskell 2010
+-}
 	= let
 		charesc = cases
 			[ "\a" <$ match 'a'

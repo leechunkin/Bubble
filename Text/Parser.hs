@@ -10,7 +10,7 @@ module Text.Parser
 (
 	Item (Result, Scan), Pattern (Pattern), Parser,
 	prepare, scan, cases,
-	Grammar, forms,
+	Memo (Memo), Syntax, forms,
 	build, results, parse,
 	anything, satisfy, match,
 	string, optional, oneOf, noneOf)
@@ -19,6 +19,7 @@ where
 import Prelude ()
 import Data.Bool (Bool)
 import Data.Maybe (Maybe (Nothing, Just))
+import Data.Either (Either (Left, Right))
 import Data.Function (($), (.))
 import Data.List (concat, elem, notElem)
 import Data.Eq (Eq ((==)))
@@ -26,9 +27,9 @@ import Data.Functor (Functor (fmap))
 import Control.Applicative
 	(
 		Applicative (pure, (<*>)), liftA2,
-		Alternative (empty, (<|>), some, many))
+		Alternative (empty, (<|>)))
 import Data.Traversable (traverse)
-import Control.Monad (Monad (return), (=<<), (>>), mapM, foldM)
+import Control.Monad (Monad (return, (>>=)), (=<<), (>>), mapM)
 import Control.Monad.Trans (lift)
 import Control.Monad.Reader (ReaderT (runReaderT), ask)
 import Control.Monad.ST (ST, runST)
@@ -58,6 +59,11 @@ instance Applicative (Pattern s c r) where
 	pure x = Pattern ($ x)
 	Pattern f <*> Pattern x = Pattern (f . (x .) . (.))
 
+instance Monad (Pattern s c r) where
+	return = pure
+	Pattern cps >>= f =
+		Pattern (\ k -> cps (\ x -> let (Pattern y) = f x in y k))
+
 data Parser s c r = Parser [Item s c r] (STRef s (ST s ()))
 
 mapSTlist :: (a -> ST s [b]) -> [a] -> ST s [b]
@@ -81,6 +87,14 @@ scan (Parser items_0 cleanupR) c
 cases :: [Pattern s c r a] -> Pattern s c r a
 cases ps = Pattern (\ k -> mapSTlist (bind_Pattern k) ps)
 
+instance Alternative (Pattern s c r) where
+	empty = Pattern (\ _ -> return [])
+	p1 <|> p2 = cases [p1, p2]
+
+satisfy :: (c -> Bool) -> Pattern s c r c
+satisfy f
+	= Pattern (\ k -> return [Scan (\ c -> if f c then k c else return [])])
+
 data Memo s c r a = Memo (STRef s [a -> Set s c r]) (STRef s [a])
 
 make_Memo :: ST s (Memo s c r a)
@@ -98,9 +112,9 @@ push_continuation (Memo csr _) c = modifySTRef' csr (c :)
 push_result :: Memo s c r a -> a -> ST s ()
 push_result (Memo _ rsr) c = modifySTRef' rsr (c :)
 
-type Grammar s c r a = ReaderT (STRef s (ST s ())) (ST s) (Pattern s c r a)
+type Syntax s c r a = ReaderT (STRef s (ST s ())) (ST s) (Pattern s c r a)
 
-forms :: [Pattern s c r a] -> Grammar s c r a
+forms :: [Pattern s c r a] -> Syntax s c r a
 forms patterns
 	= do
 		memoR <- lift (newSTRef =<< make_Memo)
@@ -124,7 +138,7 @@ forms patterns
 					_ -> mapSTlist continuation =<< get_results memo
 		return (Pattern pattern_cps)
 
-build :: Grammar s c r r -> ST s (Parser s c r)
+build :: Syntax s c r r -> ST s (Parser s c r)
 build syntax
 	= do
 		cleanup <- newSTRef (return ())
@@ -134,20 +148,19 @@ build syntax
 results :: Parser s c r -> [r]
 results (Parser items _) = result_of_Item =<< items
 
-parse :: (forall s. Grammar s c r r) -> [c] -> [r]
+parse :: (forall s. Syntax s c r r) -> [c] -> Either [c] [r]
 parse syntax input
 	= runST
 		(do
 			parser <- build syntax
-			parsed <- foldM scan parser input
-			return (results parsed))
+			let
+				feed s         (Parser [] _) = return (Left s)
+				feed []      p               = return (Right (results p))
+				feed (c : s) p@(Parser _  _) = feed s =<< scan p c
+			feed input parser)
 
 anything :: Pattern s c r c
 anything = Pattern (\ k -> return [Scan k])
-
-satisfy :: (c -> Bool) -> Pattern s c r c
-satisfy f
-	= Pattern (\ k -> return [Scan (\ c -> if f c then k c else return [])])
 
 match :: Eq c => c -> Pattern s c r c
 match = satisfy . (==)
@@ -163,9 +176,3 @@ oneOf s = satisfy (\ c -> elem c s)
 
 noneOf :: Eq c => [c] -> Pattern s c r c
 noneOf s = satisfy (\ c -> notElem c s)
-
-instance Alternative (Pattern s c r) where
-	empty = Pattern (\ _ -> return [])
-	p1 <|> p2 = cases [p1, p2]
-	many pattern = let p = cases [pure [], fmap (:) pattern <*> p] in p
-	some pattern = fmap (:) pattern <*> many pattern
