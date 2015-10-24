@@ -12,13 +12,13 @@ module Text.Parser.CPS
 	Grammar, forms,
 	build, through, results, parse,
 	anything, satisfy, match,
-	string, oneOf, noneOf)
+	string, optional, oneOf, noneOf)
 where
 
 import Prelude ()
-import Data.Function (($), (.), const)
 import Data.Bool (Bool)
 import Data.Maybe (Maybe (Nothing, Just))
+import Data.Function (($), (.), const)
 import Data.List (foldl', elem, notElem)
 import Data.Eq (Eq ((==)))
 import Data.Functor (Functor (fmap))
@@ -60,12 +60,12 @@ scan items c = items >>= \ i -> scan_with_Item i c
 cases :: [Pattern c r a] -> Pattern c r a
 cases ps = Pattern (\ k -> ps >>= \ (Pattern p) -> p k)
 
-type Grammar c r a = Identity a
+type Grammar c r a = Identity (Pattern c r a)
 
-forms :: [Pattern c r a] -> Grammar c r (Pattern c r a)
+forms :: [Pattern c r a] -> Grammar c r a
 forms = return . cases
 
-build :: Grammar c r (Pattern c r r) -> Parser c r
+build :: Grammar c r r -> Parser c r
 build = prepare . runIdentity
 
 through :: Pattern c r r -> [c] -> Parser c r
@@ -74,7 +74,7 @@ through pattern input = foldl' scan (prepare pattern) input
 results :: Parser c r -> [r]
 results = (>>= result_of_Item)
 
-parse :: Grammar c r (Pattern c r r) -> [c] -> [r]
+parse :: Grammar c r r -> [c] -> [r]
 parse = (results .) . through . runIdentity
 
 anything :: Pattern c r c
@@ -89,7 +89,7 @@ match = satisfy . (==)
 string :: Eq c => [c] -> Pattern c r [c]
 string = traverse match
 
-optional :: Pattern s c r a -> Pattern s c r (Maybe a)
+optional :: Pattern c r a -> Pattern c r (Maybe a)
 optional pattern = cases [pure Nothing, fmap Just pattern]
 
 oneOf :: Eq c => [c] -> Pattern c r c

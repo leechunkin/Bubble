@@ -98,9 +98,9 @@ push_continuation (Memo csr _) c = modifySTRef' csr (c :)
 push_result :: Memo s c r a -> a -> ST s ()
 push_result (Memo _ rsr) c = modifySTRef' rsr (c :)
 
-type Grammar s c r a = ReaderT (STRef s (ST s ())) (ST s) a
+type Grammar s c r a = ReaderT (STRef s (ST s ())) (ST s) (Pattern s c r a)
 
-forms :: [Pattern s c r a] -> Grammar s c r (Pattern s c r a)
+forms :: [Pattern s c r a] -> Grammar s c r a
 forms patterns
 	= do
 		memoR <- lift (newSTRef =<< make_Memo)
@@ -124,7 +124,7 @@ forms patterns
 					_ -> mapSTlist continuation =<< get_results memo
 		return (Pattern pattern_cps)
 
-build :: Grammar s c r (Pattern s c r r) -> ST s (Parser s c r)
+build :: Grammar s c r r -> ST s (Parser s c r)
 build syntax
 	= do
 		cleanup <- newSTRef (return ())
@@ -134,7 +134,7 @@ build syntax
 results :: Parser s c r -> [r]
 results (Parser items _) = result_of_Item =<< items
 
-parse :: (forall s. Grammar s c r (Pattern s c r r)) -> [c] -> [r]
+parse :: (forall s. Grammar s c r r) -> [c] -> [r]
 parse syntax input
 	= runST
 		(do

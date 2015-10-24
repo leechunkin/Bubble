@@ -29,7 +29,6 @@ import Data.Char
 		isLetter, isUpper, isLower, isAlphaNum,
 		digitToInt)
 import Data.Word (Word)
-import Data.Function ((.))
 import Data.List (foldl', (++), length)
 import Data.String (String)
 import Data.Eq ((/=))
