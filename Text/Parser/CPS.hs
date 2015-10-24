@@ -3,13 +3,6 @@ Parser of Context-Free Grammar
 Using recursive descent method in continuation-passing style
 
 Language: GHC 7.6, Haskell 2010
-
-* Wed, 14 Oct 2015 17:27:14 +0800
-  Start
-* Fri, 16 Oct 2015 00:29:29 +0800
-  Version 1 and rename to ParserCPS.hs
-* Thu, 22 Oct 2015 14:23:00 +0800
-  Organized as a package
 -}
 
 module Text.Parser.CPS

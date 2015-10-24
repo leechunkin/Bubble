@@ -1,8 +1,5 @@
 {-
 Parser of JavaScript Object Notation (RFC 7158)
-
-* Fri, 23 Oct 2015 16:55:23 +0800
-  Version 1
 -}
 
 module Text.Parser.Json
@@ -22,7 +19,7 @@ import qualified Text.Parser as Parser (string)
 import Prelude (
 	Num (fromInteger), Double,
 	toInteger, negate, (+), (-), (*), (^^))
-import Data.Bool (Bool (True, False))
+import Data.Bool (Bool (True, False), (&&))
 import Data.Bits (shift)
 import Data.Char (Char, chr, digitToInt, isDigit, isHexDigit)
 import Data.List (foldr, foldl', (++), length)
@@ -30,6 +27,7 @@ import Data.String (String)
 import Data.Functor ((<$>), (<$))
 import Control.Applicative (pure, (<*>), (<*), (*>), many, some)
 import Data.Function ((.))
+import Data.Ord ((<=), (>=))
 import Text.Show (Show (show))
 
 data JsonValue
@@ -53,19 +51,24 @@ true = JsonTrue <$ Parser.string "true"
 number :: Pattern s Char r JsonValue
 number
 	= let
-		digits = some (satisfy isDigit)
+		digit = satisfy isDigit
+		digit9 = satisfy (\ c -> c >= '1' && c <= '9')
 		minus = cases
 			[ pure False
 			, True <$ match '-'
 			]
+		int = cases
+			[ (: []) <$> match '0'
+			, (:) <$> digit9 <*> many digit
+			]
 		frac = cases
 			[ pure ""
 			, "" <$ match '.'
-			, match '.' *> digits
+			, match '.' *> some digit
 			]
 		exp = cases
 			[ pure ('+', "")
-			, (,) <$ oneOf "Ee" <*> cases [pure '+', oneOf "+-"] <*> digits
+			, (,) <$ oneOf "Ee" <*> cases [pure '+', oneOf "+-"] <*> some digit
 			]
 		num minus' int' frac' (es', exp')
 			= let
@@ -77,7 +80,7 @@ number
 				esign x = case es' of {'-' -> negate x; _ -> x}
 				e = 10 ^^ esign (strToInteger exp')
 			in JsonNumber (sign ((i + f) * e))
-		in num <$> minus <*> digits <*> frac <*> exp
+		in num <$> minus <*> int <*> frac <*> exp
 
 str :: Pattern s Char r String
 str
@@ -116,7 +119,8 @@ str
 				<* Parser.string "\\u"
 				<*> oneOf "Dd" <*> oneOf "CcDdEeFf" <*> hex <*> hex
 		char = cases [unescaped, escaped, basic, supplementary]
-	in match '"' *> many char <* match '"'
+		body = cases ["" <$ match '"', (:) <$> char <*> body]
+	in match '"' *> body
 
 string :: Pattern s Char r JsonValue
 string = JsonString <$> str
@@ -128,22 +132,26 @@ array :: Pattern s Char r JsonValue
 array
 	= let
 		values = cases
-			[ pure []
-			, (: []) <$ ws <*> value
+			[ (: []) <$ ws <*> value <* ws <* match ']'
 			, (:) <$ ws <*> value <* ws <* match ',' <*> values
 			]
-		in JsonArray <$ match '[' <*> values <* ws <* match ']'
+		in JsonArray <$ match '[' <*> cases
+			[ [] <$ ws <* match ']'
+			, values
+			]
 
 object :: Pattern s Char r JsonValue
 object
 	= let
 		member = (,) <$> str <* ws <* match ':' <* ws <*> value
 		members = cases
-			[ pure []
-			, (: []) <$ ws <*> member
+			[ (: []) <$ ws <*> member <* ws <* match '}'
 			, (:) <$ ws <*> member <* ws <* match ',' <*> members
 			]
-		in JsonObject <$ match '{' <*> members <* ws <* match '}'
+		in JsonObject <$ match '{' <*> cases
+			[ [] <$ ws <* match '}'
+			, members
+			]
 
 value :: Pattern s Char r JsonValue
 value = cases
@@ -162,13 +170,13 @@ text = ws *> value <* ws
 showJsonString :: String -> String
 showJsonString s
 	= let
-		escape '"' r = '\\' : '"' : r
+		escape '"'  r = '\\' : '"'  : r
 		escape '\\' r = '\\' : '\\' : r
-		escape '\b' r = '\\' : 'b' : r
-		escape '\f' r = '\\' : 'f' : r
-		escape '\t' r = '\\' : 't' : r
-		escape '\n' r = '\\' : 'n' : r
-		escape '\r' r = '\\' : 'r' : r
+		escape '\b' r = '\\' : 'b'  : r
+		escape '\f' r = '\\' : 'f'  : r
+		escape '\t' r = '\\' : 't'  : r
+		escape '\n' r = '\\' : 'n'  : r
+		escape '\r' r = '\\' : 'r'  : r
 		escape c r = c : r
 		in '"' : foldr escape "\"" s
 

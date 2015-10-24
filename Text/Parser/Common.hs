@@ -1,8 +1,5 @@
 {-
 Common Patterns
-
-* Fri, 23 Oct 2015 06:07:19 +0800
-  Version 1
 -}
 
 module Text.Parser.Common
@@ -208,15 +205,15 @@ quotedString
 			]
 		charFromInteger n = chr (fromInteger n)
 		normal c = c /= '"' && c /= '\\'
-		dec = charFromInteger          <$> decimal
+		dec = charFromInteger <$> decimal
 		oct = charFromInteger <$ match 'o' <*> octal
 		hex = charFromInteger <$ match 'x' <*> hexadecimal
 		undec = satisfy (\ c -> normal c && not (isDigit c))
 		unoct = satisfy (\ c -> normal c && not (isOctDigit c))
 		unhex = satisfy (\ c -> normal c && not (isHexDigit c))
-		afterdec = cases [pure "", escaped, (:) <$> undec <*> body]
-		afteroct = cases [pure "", escaped, (:) <$> unoct <*> body]
-		afterhex = cases [pure "", escaped, (:) <$> unhex <*> body]
+		afterdec = cases ["" <$ match '"', escaped, (:) <$> undec <*> body]
+		afteroct = cases ["" <$ match '"', escaped, (:) <$> unoct <*> body]
+		afterhex = cases ["" <$ match '"', escaped, (:) <$> unhex <*> body]
 		gap = () <$ some space <* match '\\'
 		escaped = match '\\' *> cases
 			[ (++) <$> charesc <*> body
@@ -227,5 +224,5 @@ quotedString
 			, gap *> body
 			]
 		unescaped = satisfy normal
-		body = cases [pure "", escaped, (:) <$> unescaped <*> body]
-		in match '"' *> body <* match '"'
+		body = cases ["" <$ match '"', escaped, (:) <$> unescaped <*> body]
+		in match '"' *> body

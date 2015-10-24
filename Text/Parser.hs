@@ -2,15 +2,6 @@
 Parser of Context-Free Grammar
 
 Language: GHC 7.6, Haskell 2010
-
-* Wed, 14 Oct 2015 17:27:14 +0800
-  Start
-* Fri, 16 Oct 2015 23:32:08 +0800
-  Fork a simplified CPS version to ParserSimple.hs
-* Wed, 21 Oct 2015 10:33:39 +0800
-  Version 1
-* Thu, 22 Oct 2015 14:23:00 +0800
-  Organized as a package
 -}
 
 {-# LANGUAGE Rank2Types #-}
