@@ -8,8 +8,8 @@ module Text.Parser.Common
 	newline, tab, space, printable, unprintable,
 	digit, octDigit, hexDigit,
 	letter, upper, lower, alphaNum,
-	decimal, integer, octal, hexadecimal,
-	unsigned, quotedString)
+	decimal, integer, octal, hexadecimal, unsignedInteger, signedInteger,
+	float, unsignedFloat, signedFloat, quotedString)
 where
 
 import Text.Parser
@@ -18,11 +18,9 @@ import Prelude
 	(
 		Integral(toInteger),
 		Num (fromInteger, (+), (*), negate),
-		Integer, ($!), fromIntegral, pred)
-import Data.Functor ((<$>), (<$))
-import Control.Applicative (pure, (<*>), (<*), (*>), some)
-import Data.Eq ((/=))
-import Data.Bool (Bool (False), not, (&&))
+		Integer, Double,
+		($!), fromIntegral, pred, (^^))
+import Data.Bool (Bool (True, False), not, (&&))
 import Data.Char
 	(
 		Char, chr,
@@ -31,8 +29,12 @@ import Data.Char
 		isLetter, isUpper, isLower, isAlphaNum,
 		digitToInt)
 import Data.Word (Word)
-import Data.List (foldl', (++))
+import Data.Function ((.))
+import Data.List (foldl', (++), length)
 import Data.String (String)
+import Data.Eq ((/=))
+import Data.Functor ((<$>), (<$))
+import Control.Applicative (pure, (<*>), (<*), (*>), some, many)
 
 repeating :: Integral i => i -> Pattern s c r a -> Pattern s c r [a]
 repeating i p
@@ -84,18 +86,27 @@ lower = satisfy isLower
 alphaNum :: Pattern s Char r Char
 alphaNum = satisfy isAlphaNum
 
+convert_decimal :: String -> Integer
+convert_decimal = foldl' (\ n d -> n*10 + toInteger (digitToInt d)) 0
+
 decimal :: Pattern s Char r Integer
-decimal = foldl' (\ n d -> n*10 + toInteger (digitToInt d)) 0 <$> some digit
+decimal = convert_decimal <$> some digit
+
+sign :: Pattern s Char r a -> Pattern s Char r (Bool, a)
+sign following
+	= let loop = cases
+		[ match '+' *> loop
+		, (\ (s, x) -> (not s, x)) <$ match '-' <*> loop
+		, (\ x -> (False, x)) <$> following
+		]
+		in loop
+
+signing :: Num n => (Bool, n) -> n
+signing (False, n) = n
+signing (True,  n) = negate n
 
 integer :: Pattern s Char r Integer
-integer
-	= let
-		sign = cases
-			[ pure False
-			, match '+' *> sign
-			, not <$ match '-' <*> sign
-			]
-		in (\ s n -> if s then negate n else n) <$> sign <*> decimal
+integer = signing <$> sign decimal
 
 octal :: Pattern s Char r Integer
 octal =
@@ -107,8 +118,9 @@ hexadecimal =
 	foldl' (\ n d -> n*16 + toInteger (digitToInt d)) 0
 		<$> some hexDigit
 
-unsigned :: Pattern s Char r Integer
-unsigned = cases
+unsignedInteger :: Pattern s Char r Integer
+unsignedInteger = cases
+-- Integer number literal in Haskell 2010
 	[ decimal
 	, string "0O" *> octal
 	, string "0o" *> octal
@@ -116,8 +128,52 @@ unsigned = cases
 	, string "0x" *> hexadecimal
 	]
 
+signedInteger :: Pattern s Char r Integer
+signedInteger = signing <$> sign unsignedInteger
+
+convert_float :: Bool -> String -> Bool -> String -> String -> Double
+convert_float neg int inv exp frac
+	= let
+		i = fromInteger (convert_decimal int)
+		e = convert_decimal exp
+		f = fromInteger (convert_decimal frac)
+		p = length frac
+		in signing (neg, ((i + (f * 10 ^^ negate p)) * 10 ^^ signing (inv, e)))
+
+float :: Pattern s Char r Double
+float
+	= cases
+		[ (\ (n, i) f (v, e) -> convert_float n i v e f)
+			<$> sign (some digit)
+				<*> cases [pure "", match '.' *> many digit]
+				<*> cases [pure (False, ""), oneOf "Ee" *> sign (many digit)]
+		, (\ (n, f) (v, e) -> convert_float n "" v e f)
+			<$> sign (match '.' *> many digit)
+				<*> cases [pure (False, ""), oneOf "Ee" *> sign (many digit)]
+		, (\ (n, i) (v, e) f -> convert_float n i v e f)
+			<$> sign (many digit)
+				<* oneOf "Ee" <*> sign (many digit)
+				<* match '.' <*> many digit
+		]
+
+unsignedFloat :: Pattern s Char r Double
+unsignedFloat
+-- Floating point number literal in Haskell 2010
+	= (\ i f (v, e) -> convert_float False i v e f)
+		<$> some digit
+			<* match '.' <*> some digit
+			<*> cases
+				[ pure (False, "")
+				, (\ s e -> ('-' /= s, e)) <$
+					oneOf "Ee" <*> cases [pure '+', oneOf "+-"] <*> many digit
+				]
+
+signedFloat :: Pattern s Char r Double
+signedFloat = signing <$> sign unsignedFloat
+
 quotedString :: Pattern s Char r String
 quotedString
+-- String literal in Haskell 2010
 	= let
 		charesc = cases
 			[ "\a" <$ match 'a'
@@ -204,13 +260,13 @@ quotedString
 			, '\DEL' <$ string "DEL"
 			]
 		charFromInteger n = chr (fromInteger n)
-		normal c = c /= '"' && c /= '\\'
+		nonescape c = c /= '"' && c /= '\\'
 		dec = charFromInteger <$> decimal
 		oct = charFromInteger <$ match 'o' <*> octal
 		hex = charFromInteger <$ match 'x' <*> hexadecimal
-		undec = satisfy (\ c -> normal c && not (isDigit c))
-		unoct = satisfy (\ c -> normal c && not (isOctDigit c))
-		unhex = satisfy (\ c -> normal c && not (isHexDigit c))
+		undec = satisfy (\ c -> nonescape c && not (isDigit c))
+		unoct = satisfy (\ c -> nonescape c && not (isOctDigit c))
+		unhex = satisfy (\ c -> nonescape c && not (isHexDigit c))
 		afterdec = cases ["" <$ match '"', escaped, (:) <$> undec <*> body]
 		afteroct = cases ["" <$ match '"', escaped, (:) <$> unoct <*> body]
 		afterhex = cases ["" <$ match '"', escaped, (:) <$> unhex <*> body]
@@ -223,6 +279,6 @@ quotedString
 			, (:) <$> hex <*> afterhex
 			, gap *> body
 			]
-		unescaped = satisfy normal
+		unescaped = satisfy nonescape
 		body = cases ["" <$ match '"', escaped, (:) <$> unescaped <*> body]
 		in match '"' *> body

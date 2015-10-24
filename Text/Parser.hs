@@ -17,9 +17,9 @@ module Text.Parser
 where
 
 import Prelude ()
-import Data.Function (($), (.))
 import Data.Bool (Bool)
 import Data.Maybe (Maybe (Nothing, Just))
+import Data.Function (($), (.))
 import Data.List (concat, elem, notElem)
 import Data.Eq (Eq ((==)))
 import Data.Functor (Functor (fmap))
