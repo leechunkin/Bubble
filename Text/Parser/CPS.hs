@@ -8,9 +8,8 @@ Language: GHC 7.6, Haskell 2010
 module Text.Parser.CPS
 (
 	Item (Result, Scan), Pattern (Pattern), Parser,
-	prepare, scan, cases,
-	Syntax, forms,
-	build, through, results, parse,
+	prepare, scan, cases, through, results,
+	Syntax, forms, build, parse,
 	anything, satisfy, match,
 	string, optional, oneOf, noneOf)
 where
@@ -63,6 +62,17 @@ prepare (Pattern p) = p (\ r -> [Result r])
 scan :: Parser c r -> c -> Parser c r
 scan items c = items >>= \ i -> scan_with_Item i c
 
+through :: Pattern c r r -> [c] -> Either [c] (Parser c r)
+through pattern input
+	= let
+		feed s        [] = Left s
+		feed []       p  = Right p
+		feed (c : s)  p  = feed s (scan p c)
+		in feed input (prepare pattern)
+
+results :: Parser c r -> [r]
+results = (>>= result_of_Item)
+
 cases :: [Pattern c r a] -> Pattern c r a
 cases ps = Pattern (\ k -> ps >>= \ (Pattern p) -> p k)
 
@@ -80,17 +90,6 @@ forms = return . cases
 
 build :: Syntax c r r -> Parser c r
 build = prepare . runIdentity
-
-through :: Pattern c r r -> [c] -> Either [c] (Parser c r)
-through pattern input
-	= let
-		feed s        [] = Left s
-		feed []       p  = Right p
-		feed (c : s)  p  = feed s (scan p c)
-		in feed input (prepare pattern)
-
-results :: Parser c r -> [r]
-results = (>>= result_of_Item)
 
 parse :: Syntax c r r -> [c] -> Either [c] [r]
 parse syntax input
