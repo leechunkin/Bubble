@@ -8,27 +8,26 @@ Language: GHC 7.6, Haskell 2010
 
 module Text.Parser
 (
-	Item (Result, Scan), Pattern (Pattern), Parser,
-	prepare, scan, cases, results,
+	Item (Result, Scan),
+	Pattern (Pattern), cases, satisfy,
+	Parser (Parser), prepare, scan, failed, results, feed,
 	Memo (Memo), Syntax, memoize, forms, build, parse,
-	anything, satisfy, match,
-	string, optional, oneOf, noneOf)
+	anything, match, string, oneOf, noneOf, many_, some_)
 where
 
 import Prelude ()
 import Data.Bool (Bool)
-import Data.Maybe (Maybe (Nothing, Just))
 import Data.Either (Either (Left, Right))
 import Data.Function (($), (.))
-import Data.List (concat, elem, notElem)
+import Data.List (concat, null, elem, notElem)
 import Data.Eq (Eq ((==)))
-import Data.Functor (Functor (fmap))
+import Data.Functor (Functor (fmap), (<$))
 import Control.Applicative
 	(
 		Applicative (pure, (<*>)), liftA2,
-		Alternative (empty, (<|>)))
+		Alternative (empty, (<|>)), (<*))
 import Data.Traversable (traverse)
-import Control.Monad (Monad (return, (>>=)), (=<<), (>>), mapM)
+import Control.Monad (Monad (return, (>>=)), (=<<), (>>))
 import Control.Monad.Cont (Cont, cont, runCont)
 import Control.Monad.Trans (lift)
 import Control.Monad.Reader (ReaderT (runReaderT), ask)
@@ -53,41 +52,21 @@ cont_of_Pattern :: Pattern s c r a -> Cont (Set s c r) a
 cont_of_Pattern (Pattern p) = p
 
 bind_Pattern :: (a -> Set s c r) -> Pattern s c r a -> Set s c r
-bind_Pattern k p = runCont (cont_of_Pattern p) k
+bind_Pattern k (Pattern p) = runCont p k
 
 instance Functor (Pattern s c r) where
-	fmap f x = Pattern (fmap f (cont_of_Pattern x))
+	fmap f (Pattern x) = Pattern (fmap f x)
 
 instance Applicative (Pattern s c r) where
 	pure x = Pattern (pure x)
-	f <*> x = Pattern (cont_of_Pattern f <*> cont_of_Pattern x)
+	Pattern f <*> Pattern x = Pattern (f <*> x)
 
 instance Monad (Pattern s c r) where
 	return = pure
-	x >>= f = Pattern (cont_of_Pattern . f =<< cont_of_Pattern x)
-
-data Parser s c r = Parser [Item s c r] (STRef s (ST s ()))
+	Pattern x >>= f = Pattern (cont_of_Pattern . f =<< x)
 
 mapSTlist :: (a -> ST s [b]) -> [a] -> ST s [b]
-mapSTlist = (fmap concat .) . mapM
-
-prepare :: Pattern s c r r -> STRef s (ST s ()) -> ST s (Parser s c r)
-prepare p cleanupR
-	= do
-		items <- runCont (cont_of_Pattern p) (\ r -> return [Result r])
-		return (Parser items cleanupR)
-
-scan :: Parser s c r -> c -> ST s (Parser s c r)
-scan (Parser items_0 cleanupR) c
-	= do
-		cleanup <- readSTRef cleanupR
-		writeSTRef cleanupR (return ())
-		cleanup
-		items_1 <- mapSTlist (\ i -> scan_with_Item i c) items_0
-		return (Parser items_1 cleanupR)
-
-results :: Parser s c r -> [r]
-results (Parser items _) = result_of_Item =<< items
+mapSTlist = (fmap concat .) . traverse
 
 cases :: [Pattern s c r a] -> Pattern s c r a
 cases ps = Pattern (cont (\ k -> mapSTlist (bind_Pattern k) ps))
@@ -100,6 +79,37 @@ satisfy :: (c -> Bool) -> Pattern s c r c
 satisfy f
 	= Pattern
 		(cont (\ k -> return [Scan (\ c -> if f c then k c else return [])]))
+
+data Parser s c r = Parser [Item s c r] (STRef s (ST s ()))
+
+prepare :: Pattern s c r r -> STRef s (ST s ()) -> ST s (Parser s c r)
+prepare (Pattern p) cleanupR
+	= do
+		items <- runCont p (\ r -> return [Result r])
+		return (Parser items cleanupR)
+
+scan :: Parser s c r -> c -> ST s (Parser s c r)
+scan (Parser items_0 cleanupR) c
+	= do
+		cleanup <- readSTRef cleanupR
+		writeSTRef cleanupR (return ())
+		cleanup
+		items_1 <- mapSTlist (\ i -> scan_with_Item i c) items_0
+		return (Parser items_1 cleanupR)
+
+failed :: Parser s c r -> Bool
+failed (Parser p _) = null p
+
+results :: Parser s c r -> [r]
+results (Parser items _) = result_of_Item =<< items
+
+feed :: Parser s c r -> [c] -> ST s (Either [c] (Parser s c r))
+feed parser input =
+	if failed parser
+		then return (Left input)
+		else case input of
+			[]    -> return (Right parser)
+			c : s -> (\ p -> feed p s) =<< scan parser c
 
 data Memo s c r a = Memo (STRef s [a -> Set s c r]) (STRef s [a])
 
@@ -159,11 +169,10 @@ parse syntax input
 	= runST
 		(do
 			parser <- build syntax
-			let
-				feed s         (Parser [] _) = return (Left s)
-				feed []      p               = return (Right (results p))
-				feed (c : s) p@(Parser _  _) = feed s =<< scan p c
-			feed input parser)
+			parsed <- feed parser input
+			case parsed of
+				Left  s -> return (Left s)
+				Right p -> return (Right (results p)))
 
 anything :: Pattern s c r c
 anything = Pattern (cont (\ k -> return [Scan k]))
@@ -174,11 +183,14 @@ match = satisfy . (==)
 string :: Eq c => [c] -> Pattern s c r [c]
 string = traverse match
 
-optional :: Pattern s c r a -> Pattern s c r (Maybe a)
-optional pattern = cases [pure Nothing, fmap Just pattern]
-
 oneOf :: Eq c => [c] -> Pattern s c r c
 oneOf s = satisfy (\ c -> elem c s)
 
 noneOf :: Eq c => [c] -> Pattern s c r c
 noneOf s = satisfy (\ c -> notElem c s)
+
+many_ :: Pattern s c r a -> Pattern s c r ()
+many_ pattern = let p = cases [pure (), () <$ pattern <* p] in p
+
+some_ :: Pattern s c r a -> Pattern s c r ()
+some_ pattern = () <$ pattern <* many_ pattern
