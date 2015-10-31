@@ -12,22 +12,24 @@ module Text.Parser
 	Pattern (Pattern), cases, satisfy,
 	Parser (Parser), prepare, scan, failed, results, feed,
 	Memo (Memo), Syntax, memoize, forms, build, parse,
-	anything, match, string, oneOf, noneOf, many_, some_)
+	anything, match, string, oneOf, noneOf,
+	many_, some_, many', some', many_', some_')
 where
 
 import Prelude ()
 import Data.Bool (Bool)
 import Data.Either (Either (Left, Right))
-import Data.Function (($), (.))
-import Data.List (concat, null, elem, notElem)
+import Data.Function (($), (.), flip)
+import Data.List (concat, reverse, null, elem, notElem)
 import Data.Eq (Eq ((==)))
-import Data.Functor (Functor (fmap), (<$))
+import Data.Functor (Functor (fmap), (<$>), (<$))
 import Control.Applicative
 	(
 		Applicative (pure, (<*>)), liftA2,
 		Alternative (empty, (<|>)), (<*))
 import Data.Traversable (traverse)
 import Control.Monad (Monad (return, (>>=)), (=<<), (>>))
+import Control.Monad.Fix (mfix)
 import Control.Monad.Cont (Cont, cont, runCont)
 import Control.Monad.Trans (lift)
 import Control.Monad.Reader (ReaderT (runReaderT), ask)
@@ -44,14 +46,13 @@ scan_with_Item :: Item s c r -> c -> ST s [Item s c r]
 scan_with_Item (Scan f) c = f c
 scan_with_Item _ _ = return []
 
-type Set s c r = ST s [Item s c r]
+newtype Pattern s c r a = Pattern (Cont (ST s [Item s c r]) a)
 
-newtype Pattern s c r a = Pattern (Cont (Set s c r) a)
-
-cont_of_Pattern :: Pattern s c r a -> Cont (Set s c r) a
+cont_of_Pattern :: Pattern s c r a -> Cont (ST s [Item s c r]) a
 cont_of_Pattern (Pattern p) = p
 
-bind_Pattern :: (a -> Set s c r) -> Pattern s c r a -> Set s c r
+bind_Pattern
+	:: (a -> ST s [Item s c r]) -> Pattern s c r a -> ST s [Item s c r]
 bind_Pattern k (Pattern p) = runCont p k
 
 instance Functor (Pattern s c r) where
@@ -111,18 +112,18 @@ feed parser input =
 			[]    -> return (Right parser)
 			c : s -> (\ p -> feed p s) =<< scan parser c
 
-data Memo s c r a = Memo (STRef s [a -> Set s c r]) (STRef s [a])
+data Memo s c r a = Memo (STRef s [a -> ST s [Item s c r]]) (STRef s [a])
 
 make_Memo :: ST s (Memo s c r a)
 make_Memo = liftA2 Memo (newSTRef []) (newSTRef [])
 
-get_continuations :: Memo s c r a -> ST s [a -> Set s c r]
+get_continuations :: Memo s c r a -> ST s [a -> ST s [Item s c r]]
 get_continuations (Memo csr _) = readSTRef csr
 
 get_results :: Memo s c r a -> ST s [a]
 get_results (Memo _ rsr) = readSTRef rsr
 
-push_continuation :: Memo s c r a -> (a -> Set s c r) -> ST s ()
+push_continuation :: Memo s c r a -> (a -> ST s [Item s c r]) -> ST s ()
 push_continuation (Memo csr _) c = modifySTRef' csr (c :)
 
 push_result :: Memo s c r a -> a -> ST s ()
@@ -194,3 +195,46 @@ many_ pattern = let p = cases [pure (), () <$ pattern <* p] in p
 
 some_ :: Pattern s c r a -> Pattern s c r ()
 some_ pattern = () <$ pattern <* many_ pattern
+
+many' :: Pattern s c r a -> Syntax s c r [a]
+many' pattern
+	= do
+		syntax
+			<- mfix
+				(\ syntax
+					-> forms
+						[ pure []
+						, flip (:) <$> syntax <*> pattern
+						])
+		return (reverse <$> syntax)
+
+
+some' :: Pattern s c r a -> Syntax s c r [a]
+some' pattern
+	= do
+		syntax
+			<- mfix
+				(\ syntax
+					-> forms
+						[ (: []) <$> pattern
+						, flip (:) <$> syntax <*> pattern
+						])
+		return (reverse <$> syntax)
+
+many_' :: Pattern s c r a -> Syntax s c r ()
+many_' pattern
+	= mfix
+		(\ syntax
+			-> forms
+				[ pure ()
+				, () <$ syntax <* pattern
+				])
+
+some_' :: Pattern s c r a -> Syntax s c r ()
+some_' pattern
+	= mfix
+		(\ syntax
+			-> forms
+				[ () <$ pattern
+				, () <$ syntax <* pattern
+				])

@@ -11,7 +11,8 @@ module Text.Parser.CPS
 	Pattern (Pattern), cases, satisfy,
 	Parser, prepare, scan, failed, results, feed,
 	Syntax, forms, build, parse,
-	anything, match, string, oneOf, noneOf, many_, some_)
+	anything, match, string, oneOf, noneOf,
+	many_, some_, many', some', many_', some_')
 where
 
 import Prelude ()
@@ -24,7 +25,7 @@ import Data.Functor (Functor (fmap), (<$))
 import Control.Applicative
 	(
 		Applicative (pure, (<*>)),
-		Alternative (empty, (<|>)), (<*))
+		Alternative (empty, (<|>)), (<*), many, some)
 import Data.Traversable (traverse)
 import Control.Monad (Monad (return, (>>=)))
 import Data.Functor.Identity (Identity (runIdentity))
@@ -119,3 +120,15 @@ many_ pattern = let p = cases [pure (), () <$ pattern <* p] in p
 
 some_ :: Pattern c r a -> Pattern c r ()
 some_ pattern = () <$ pattern <* many_ pattern
+
+many' :: Pattern c r a -> Syntax c r [a]
+many' = return . many
+
+some' :: Pattern c r a -> Syntax c r [a]
+some' = return . some
+
+many_' :: Pattern c r a -> Syntax c r ()
+many_' = return . many_
+
+some_' :: Pattern c r a -> Syntax c r ()
+some_' = return . some_
