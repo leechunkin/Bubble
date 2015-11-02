@@ -10,7 +10,7 @@ module Text.Parser.CPS
 	Item (Result, Scan),
 	Pattern (Pattern), cases, satisfy,
 	Parser, prepare, scan, failed, results, feed,
-	Syntax, forms, build, parse,
+	Grammar, forms, build, parse,
 	anything, match, string, oneOf, noneOf,
 	many_, some_, many', some', many_', some_')
 where
@@ -86,17 +86,17 @@ feed parser input =
 			[]    -> Right parser
 			c : s -> feed (scan parser c) s
 
-type Syntax c r a = Identity (Pattern c r a)
+type Grammar s c r a = Identity (Pattern c r a)
 
-forms :: [Pattern c r a] -> Syntax c r a
+forms :: [Pattern c r a] -> Grammar s c r a
 forms = return . cases
 
-build :: Syntax c r r -> Parser c r
+build :: Grammar s c r r -> Parser c r
 build = prepare . runIdentity
 
-parse :: Syntax c r r -> [c] -> Either [c] [r]
-parse syntax input
-	= case feed (build syntax) input of
+parse :: Grammar s c r r -> [c] -> Either [c] [r]
+parse grammar input
+	= case feed (build grammar) input of
 		Left  remainer -> Left remainer
 		Right parser   -> Right (results parser)
 
@@ -121,14 +121,14 @@ many_ pattern = let p = cases [pure (), () <$ pattern <* p] in p
 some_ :: Pattern c r a -> Pattern c r ()
 some_ pattern = () <$ pattern <* many_ pattern
 
-many' :: Pattern c r a -> Syntax c r [a]
+many' :: Pattern c r a -> Grammar s c r [a]
 many' = return . many
 
-some' :: Pattern c r a -> Syntax c r [a]
+some' :: Pattern c r a -> Grammar s c r [a]
 some' = return . some
 
-many_' :: Pattern c r a -> Syntax c r ()
+many_' :: Pattern c r a -> Grammar s c r ()
 many_' = return . many_
 
-some_' :: Pattern c r a -> Syntax c r ()
+some_' :: Pattern c r a -> Grammar s c r ()
 some_' = return . some_

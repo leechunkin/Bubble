@@ -22,14 +22,14 @@ collect p0 (c : cs)
 		let rs = map (\ r -> (r, cs)) (results p1)
 		fmap (rs ++) (collect p1 cs)
 
-prefixes :: (forall s. Syntax s c r r) -> [c] -> [(r, [c])]
-prefixes syntax input
+prefixes :: (forall s. Grammar s c r r) -> [c] -> [(r, [c])]
+prefixes grammar input
 	= runST
 		(do
-			parser <- build syntax
+			parser <- build grammar
 			collect parser input)
 
-search :: (forall s. Syntax s c r r) -> [c] -> [(r, [c], [c])]
+search :: (forall s. Grammar s c r r) -> [c] -> [(r, [c], [c])]
 search parser input
 	= (map (\ (r, s) -> (r, input, s)) (prefixes parser input))
 		++ case input of

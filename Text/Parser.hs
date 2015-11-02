@@ -11,7 +11,7 @@ module Text.Parser
 	Item (Result, Scan),
 	Pattern (Pattern), cases, satisfy,
 	Parser (Parser), prepare, scan, failed, results, feed,
-	Memo (Memo), Syntax, memoize, forms, build, parse,
+	Memo (Memo), Grammar, memoize, forms, build, parse,
 	anything, match, string, oneOf, noneOf,
 	many_, some_, many', some', many_', some_')
 where
@@ -129,9 +129,9 @@ push_continuation (Memo csr _) c = modifySTRef' csr (c :)
 push_result :: Memo s c r a -> a -> ST s ()
 push_result (Memo _ rsr) c = modifySTRef' rsr (c :)
 
-type Syntax s c r a = ReaderT (STRef s (ST s ())) (ST s) (Pattern s c r a)
+type Grammar s c r a = ReaderT (STRef s (ST s ())) (ST s) (Pattern s c r a)
 
-memoize :: Pattern s c r a -> Syntax s c r a
+memoize :: Pattern s c r a -> Grammar s c r a
 memoize pattern
 	= do
 		memoR <- lift (newSTRef =<< make_Memo)
@@ -155,21 +155,21 @@ memoize pattern
 					_ -> mapSTlist continuation =<< get_results memo
 		return (Pattern (cont pattern_cps))
 
-forms :: [Pattern s c r a] -> Syntax s c r a
+forms :: [Pattern s c r a] -> Grammar s c r a
 forms = memoize . cases
 
-build :: Syntax s c r r -> ST s (Parser s c r)
-build syntax
+build :: Grammar s c r r -> ST s (Parser s c r)
+build grammar
 	= do
 		cleanup <- newSTRef (return ())
-		pattern <- runReaderT syntax cleanup
+		pattern <- runReaderT grammar cleanup
 		prepare pattern cleanup
 
-parse :: (forall s. Syntax s c r r) -> [c] -> Either [c] [r]
-parse syntax input
+parse :: (forall s. Grammar s c r r) -> [c] -> Either [c] [r]
+parse grammar input
 	= runST
 		(do
-			parser <- build syntax
+			parser <- build grammar
 			parsed <- feed parser input
 			case parsed of
 				Left  s -> return (Left s)
@@ -196,45 +196,45 @@ many_ pattern = let p = cases [pure (), () <$ pattern <* p] in p
 some_ :: Pattern s c r a -> Pattern s c r ()
 some_ pattern = () <$ pattern <* many_ pattern
 
-many' :: Pattern s c r a -> Syntax s c r [a]
+many' :: Pattern s c r a -> Grammar s c r [a]
 many' pattern
 	= do
-		syntax
+		grammar
 			<- mfix
-				(\ syntax
+				(\ grammar
 					-> forms
 						[ pure []
-						, flip (:) <$> syntax <*> pattern
+						, flip (:) <$> grammar <*> pattern
 						])
-		return (reverse <$> syntax)
+		return (reverse <$> grammar)
 
 
-some' :: Pattern s c r a -> Syntax s c r [a]
+some' :: Pattern s c r a -> Grammar s c r [a]
 some' pattern
 	= do
-		syntax
+		grammar
 			<- mfix
-				(\ syntax
+				(\ grammar
 					-> forms
 						[ (: []) <$> pattern
-						, flip (:) <$> syntax <*> pattern
+						, flip (:) <$> grammar <*> pattern
 						])
-		return (reverse <$> syntax)
+		return (reverse <$> grammar)
 
-many_' :: Pattern s c r a -> Syntax s c r ()
+many_' :: Pattern s c r a -> Grammar s c r ()
 many_' pattern
 	= mfix
-		(\ syntax
+		(\ grammar
 			-> forms
 				[ pure ()
-				, () <$ syntax <* pattern
+				, () <$ grammar <* pattern
 				])
 
-some_' :: Pattern s c r a -> Syntax s c r ()
+some_' :: Pattern s c r a -> Grammar s c r ()
 some_' pattern
 	= mfix
-		(\ syntax
+		(\ grammar
 			-> forms
 				[ () <$ pattern
-				, () <$ syntax <* pattern
+				, () <$ grammar <* pattern
 				])

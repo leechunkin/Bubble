@@ -12,19 +12,19 @@ import Text.Parser.Common
 import Data.List
 import Control.Applicative
 
-syntax :: Syntax s Char r Double
+grammar :: Grammar s Char r Double
 {-
-syntax ::= ws expr ws
-ws     ::= space*
-atom   ::= float
-         | "(" ws expr ws ")"
-expr   ::= term
-         | expr ws "*" ws expr
-         | expr ws "/" ws expr
-         | expr ws "+" ws expr
-         | expr ws "-" ws expr
+grammar ::= ws expr ws
+ws      ::= space*
+atom    ::= float
+          | "(" ws expr ws ")"
+expr    ::= term
+          | expr ws "*" ws expr
+          | expr ws "/" ws expr
+          | expr ws "+" ws expr
+          | expr ws "-" ws expr
 -}
-syntax
+grammar
 	= mdo
 		let ws = many space
 		atom <- forms
@@ -49,7 +49,7 @@ main
 			[] -> putStrLn "Done"
 			_
 				-> do
-					case parse syntax input of
+					case parse grammar input of
 						Left _ -> putStrLn "Syntax error"
 						Right answers -> print (sort (nub answers))
 					main
