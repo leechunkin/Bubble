@@ -1,5 +1,5 @@
 {-
-Parser of JavaScript Object Notation (RFC 7158)
+Strict parser of JavaScript Object Notation (RFC 7158)
 -}
 
 module Text.Parser.Bubble.Json

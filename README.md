@@ -2,23 +2,30 @@
 
 ## Introduction
 
-Bubble is (mostly) a combinator parser library for Haskell.
-It uses modified Earley parser algorithm, and is designed to parse
-context-free grammars.
+Bubble is context-free grammar parser library for Haskell.
+It uses a modified Earley parser algorithm.
 
 * All context-free grammars can be parsed, including ambiguous and
 unambigous grammars.
-* No backtracking is used. Linear time for almost all LL(k) and LR(k)
-grammars, and O(n³) for worst case ambigouous grammars.
-* Combinator parser builds the grammar "on-the-fly".
-It gives a lot of flexibility to use.
-* The internal structure structure is quite simple.
-It makes the library easy to use and extend.
-* Some context-sensitive grammars can be parsed due to the flexibility
-and ST monad it runs on.
+* No backtracking is used.
+Linear time for almost all LR(k) grammars, and cubic time for worst
+case ambigouous grammars.
+* The grammar is built on-the-fly.
+It provides good flexiblity to use.
+* No lexer is needed (lexerless parsing) although you can use one.
+* There is no constraint or restriction on input and output types.
+Any type can be used for input or output and not necessary to be an
+instance of any typeclass.
+* The internal structure structure is quite simple, which makes it easy
+to use, understand and extend.
+* Some context-sensitive grammars can be parsed by using the flexibility
+of the parser and the ST monad underlayer.
 
 ## Compatibility and dependencies
 
-The library is written in Haskell 2010 and GHC 7.6 library,
-with Rank2Types extension for ST monad. MTL package is required to
-provide ReaderT, ContT and ST monads.
+The library is written in Haskell 2010 with Rank2Types extension.
+Rank2Types is used for ST monad.
+
+GHC 7.6 is used for development.
+I have never tested on other versions although it should work as well.
+MTL and transformers libraries are used for Cont and ReaderT monads.

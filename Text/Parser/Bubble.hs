@@ -11,7 +11,7 @@ module Text.Parser.Bubble
 	Item (Result, Scan),
 	Pattern (Pattern), cases, satisfy,
 	Parser (Parser), prepare, scan, failed, results, feed,
-	Memo (Memo), Grammar, memoize, forms, build, parse,
+	Memo (Memo), Grammar, form, forms, build, parse,
 	anything, match, string, oneOf, noneOf,
 	many_, some_, many', some', many_', some_')
 where
@@ -131,8 +131,8 @@ push_result (Memo _ rsr) c = modifySTRef' rsr (c :)
 
 type Grammar s c r a = ReaderT (STRef s (ST s ())) (ST s) (Pattern s c r a)
 
-memoize :: Pattern s c r a -> Grammar s c r a
-memoize pattern
+form :: Pattern s c r a -> Grammar s c r a
+form pattern
 	= do
 		memoR <- lift (newSTRef =<< make_Memo)
 		cleanupR <- ask
@@ -156,7 +156,7 @@ memoize pattern
 		return (Pattern (cont pattern_cps))
 
 forms :: [Pattern s c r a] -> Grammar s c r a
-forms = memoize . cases
+forms = form . cases
 
 build :: Grammar s c r r -> ST s (Parser s c r)
 build grammar
