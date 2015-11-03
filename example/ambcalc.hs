@@ -6,8 +6,8 @@ Simple calculator with ambiguous grammar
 
 module Main (main) where
 
-import Text.Parser
-import Text.Parser.Common
+import Text.Parser.Bubble
+import Text.Parser.Bubble.Common
 
 import Data.List
 import Control.Applicative

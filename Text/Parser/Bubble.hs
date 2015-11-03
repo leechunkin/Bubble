@@ -6,7 +6,7 @@ Language: GHC 7.6, Haskell 2010
 
 {-# LANGUAGE Rank2Types #-}
 
-module Text.Parser
+module Text.Parser.Bubble
 (
 	Item (Result, Scan),
 	Pattern (Pattern), cases, satisfy,

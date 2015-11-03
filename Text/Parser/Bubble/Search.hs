@@ -1,11 +1,8 @@
 {-# LANGUAGE Rank2Types #-}
 
-module Text.Parser.Search
-(
-	collect, prefixes, search)
-where
+module Text.Parser.Bubble.Search (collect, prefixes, search) where
 
-import Text.Parser
+import Text.Parser.Bubble
 
 import Prelude ()
 import Data.List (map, (++))

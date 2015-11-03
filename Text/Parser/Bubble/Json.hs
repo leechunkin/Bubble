@@ -2,7 +2,7 @@
 Parser of JavaScript Object Notation (RFC 7158)
 -}
 
-module Text.Parser.Json
+module Text.Parser.Bubble.Json
 (
 	JsonValue
 		(
@@ -13,8 +13,8 @@ module Text.Parser.Json
 	value, text, showJsonString, showJson)
 where
 
-import Text.Parser hiding (string)
-import qualified Text.Parser as Parser (string)
+import Text.Parser.Bubble hiding (string)
+import qualified Text.Parser.Bubble as Parser (string)
 
 import Prelude (
 	Num (fromInteger), Double,

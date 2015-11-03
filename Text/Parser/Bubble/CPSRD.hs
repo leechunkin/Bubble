@@ -1,11 +1,11 @@
 {-
 Parser of Context-Free Grammar
-Using recursive descent method in continuation-passing style
+Using simple recursive descent method in continuation-passing style
 
 Language: GHC 7.6, Haskell 2010
 -}
 
-module Text.Parser.CPS
+module Text.Parser.Bubble.CPS
 (
 	Item (Result, Scan),
 	Pattern (Pattern), cases, satisfy,

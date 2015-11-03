@@ -2,9 +2,12 @@
 Some useful patterns
 -}
 
-module Text.Parser.Common
+{-# LANGUAGE Rank2Types #-}
+
+module Text.Parser.Bubble.Common
 (
-	repeating, atmost,
+	feed_minimal, parse_shortest, feed_maximal, parse_longest,
+	times, atmost,
 	newline, tab, space, printable, unprintable,
 	digit, octDigit, hexDigit,
 	letter, upper, lower, alphaNum,
@@ -12,7 +15,7 @@ module Text.Parser.Common
 	float, unsignedFloat, signedFloat, quotedString)
 where
 
-import Text.Parser
+import Text.Parser.Bubble
 
 import Prelude
 	(
@@ -28,15 +31,65 @@ import Data.Char
 		isDigit, isOctDigit, isHexDigit,
 		isLetter, isUpper, isLower, isAlphaNum,
 		digitToInt)
+import Data.Either (Either (Left, Right))
 import Data.List (foldl', (++), length)
 import Data.String (String)
 import Data.Eq ((/=))
 import Data.Ord ((<))
 import Data.Functor ((<$>), (<$))
 import Control.Applicative (pure, (<*>), (<*), (*>), some, many)
+import Control.Monad (return)
+import Control.Monad.ST (ST, runST)
 
-repeating :: Integral i => i -> Pattern s c r a -> Pattern s c r [a]
-repeating n p
+partial_parse
+	:: (forall s. Parser s c r -> [c] -> ST s (Either [c] (Parser s c r, [c])))
+		-> (forall s. Grammar s c r r) -> [c] -> Either [c] ([r], [c])
+partial_parse feeder grammar input
+	= runST
+		(do
+			parser_0 <- build grammar
+			fed <- feeder parser_0 input
+			case fed of
+				Left  remaining
+					-> return (Left remaining)
+				Right (parser_1, remaining)
+					-> return (Right (results parser_1, remaining)))
+
+feed_minimal :: Parser s c r -> [c] -> ST s (Either [c] (Parser s c r, [c]))
+feed_minimal parser input
+	= case results parser of
+		[] -> case input of
+			[] -> return (Left [])
+			c : cs
+				-> do
+					scanned <- scan parser c
+					feed_minimal scanned cs
+		_  -> return (Right (parser, input))
+
+parse_shortest :: (forall s. Grammar s c r r) -> [c] -> Either [c] ([r], [c])
+parse_shortest = partial_parse feed_minimal
+
+feed_maximal :: Parser s c r -> [c] -> ST s (Either [c] (Parser s c r, [c]))
+feed_maximal parser input
+	= case input of
+		[] -> return (Left [])
+		c : cs
+			-> do
+				scanned <- scan parser c
+				case results parser of
+					[] -> feed_maximal scanned cs
+					_
+						-> do
+							fed <- feed_maximal scanned cs
+							case fed of
+								Left  _ -> return (Right (parser, input))
+								Right _ -> return fed
+
+parse_longest :: (forall s. Grammar s c r r) -> [c] -> Either [c] ([r], [c])
+parse_longest = partial_parse feed_maximal
+
+times :: Integral i => i -> Pattern s c r a -> Pattern s c r [a]
+times n p
 	= let
 		r i
 			| i < 1     = pure []
@@ -163,7 +216,7 @@ float
 unsignedFloat :: Pattern s Char r Double
 {-
 Floating point number literal in Haskell 2010
-Same as integer, it can never be negative.
+Similar to integer, it can never be negative.
 -}
 unsignedFloat
 	= (\ i f (v, e) -> convert_float False i v e f)
@@ -179,10 +232,10 @@ signedFloat :: Pattern s Char r Double
 signedFloat = signing <$> sign unsignedFloat
 
 quotedString :: Pattern s Char r String
-quotedString
 {-
 String literal in Haskell 2010
 -}
+quotedString
 	= let
 		charesc = cases
 			[ "\a" <$ match 'a'
