@@ -25,7 +25,6 @@ of the parser and the ST monad underlayer.
 
 The library is written in Haskell 2010 with Rank2Types extension.
 Rank2Types is used for ST monad.
+RecursiveDo is suggested for convenience in using.
 
-GHC 7.6 is used for development.
-I have never tested on other versions although it should work as well.
-MTL and transformers libraries are used for Cont and ReaderT monads.
+GHC 7.6 base library is used in development.
