@@ -12,13 +12,13 @@ module Text.Parser.Bubble
 	Pattern (Pattern), cases, satisfy,
 	Parser (Parser), prepare, scan, failed, results, feed,
 	Memo (Memo), Forms (Forms), askForms, liftForms,
-	Grammar, form, forms, form_, forms_, build, parse,
+	Grammar, form, forms, build, parse,
 	anything, match, string, oneOf, noneOf,
 	many_, some_, many', some', many_', some_')
 where
 
 import Prelude ()
-import Data.Bool (Bool (True, False))
+import Data.Bool (Bool)
 import Data.Either (Either (Left, Right))
 import Data.Function (($), (.), const, flip)
 import Data.List ((++), concat, reverse, null, elem, notElem)
@@ -36,13 +36,13 @@ import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 
 data Item s c r = Result r | Scan (c -> ST s [Item s c r])
 
-result_of_Item :: Item s c r -> [r]
-result_of_Item (Result r) = [r]
-result_of_Item _ = []
+result_Item :: Item s c r -> [r]
+result_Item (Result r) = [r]
+result_Item _ = []
 
-scan_with_Item :: Item s c r -> c -> ST s [Item s c r]
-scan_with_Item (Scan f) c = f c
-scan_with_Item _ _ = return []
+scan_Item :: Item s c r -> c -> ST s [Item s c r]
+scan_Item (Scan f) c = f c
+scan_Item _ _ = return []
 
 newtype Pattern s c r a
 	= Pattern ((a -> ST s [Item s c r]) -> ST s [Item s c r])
@@ -84,17 +84,17 @@ prepare (Pattern pattern) cleanupR
 scan :: Parser s c r -> c -> ST s (Parser s c r)
 scan (Parser items_0 cleanupR) c
 	= do
+		items_1 <- mapSTlist (\ i -> scan_Item i c) items_0
 		cleanup <- readSTRef cleanupR
 		writeSTRef cleanupR (return ())
 		cleanup
-		items_1 <- mapSTlist (\ i -> scan_with_Item i c) items_0
 		return (Parser items_1 cleanupR)
 
 failed :: Parser s c r -> Bool
 failed (Parser p _) = null p
 
 results :: Parser s c r -> [r]
-results (Parser items _) = result_of_Item =<< items
+results (Parser items _) = result_Item =<< items
 
 feed :: Parser s c r -> [c] -> ST s (Either [c] (Parser s c r))
 feed parser input =
@@ -129,21 +129,25 @@ liftForms = Forms . const
 type Grammar s c r a = Forms s (Pattern s c r a)
 
 data Memo s c r a = Memo (STRef s [a -> ST s [Item s c r]]) (STRef s [a])
+	deriving Eq
 
 make_Memo :: ST s (Memo s c r a)
 make_Memo = liftA2 Memo (newSTRef []) (newSTRef [])
 
-get_continuations_Memo :: Memo s c r a -> ST s [a -> ST s [Item s c r]]
-get_continuations_Memo (Memo csr _) = readSTRef csr
+get_continuations :: Memo s c r a -> ST s [a -> ST s [Item s c r]]
+get_continuations (Memo csr _) = readSTRef csr
 
-get_results_Memo :: Memo s c r a -> ST s [a]
-get_results_Memo (Memo _ rsr) = readSTRef rsr
+get_results :: Memo s c r a -> ST s [a]
+get_results (Memo _ rsr) = readSTRef rsr
 
-push_continuation_Memo :: Memo s c r a -> (a -> ST s [Item s c r]) -> ST s ()
-push_continuation_Memo (Memo csr _) c = modifySTRef' csr (c :)
+push_continuation :: Memo s c r a -> (a -> ST s [Item s c r]) -> ST s ()
+push_continuation (Memo csr _) c = modifySTRef' csr (c :)
 
-push_result_Memo :: Memo s c r a -> a -> ST s ()
-push_result_Memo (Memo _ rsr) c = modifySTRef' rsr (c :)
+clear_results :: Memo s c r a -> ST s ()
+clear_results (Memo _ rsr) = writeSTRef rsr []
+
+push_result :: Memo s c r a -> a -> ST s ()
+push_result (Memo _ rsr) c = modifySTRef' rsr (c :)
 
 form :: Pattern s c r a -> Grammar s c r a
 form (Pattern pattern)
@@ -153,72 +157,30 @@ form (Pattern pattern)
 		let cps continuation
 			= do
 				memo <- readSTRef memoR
-				memo_continuations <- get_continuations_Memo memo
-				push_continuation_Memo memo continuation
+				memo_continuations <- get_continuations memo
+				push_continuation memo continuation
 				case memo_continuations of
 					[]
 						-> do
-							let clear_MemoR = writeSTRef memoR =<< make_Memo
+							let clear_MemoR
+								= do
+									writeSTRef memoR =<< make_Memo
+									clear_results memo
 								in modifySTRef' cleanupR (clear_MemoR >>)
 							let add_result new_result
 								= do
-									push_result_Memo memo new_result
-									continuations <- get_continuations_Memo memo
+									memo_latest <- readSTRef memoR
+									if memo == memo_latest
+										then push_result memo new_result
+										else return ()
+									continuations <- get_continuations memo
 									mapSTlist ($ new_result) continuations
 								in pattern add_result
-					_ : _ -> mapSTlist continuation =<< get_results_Memo memo
+					_ : _ -> mapSTlist continuation =<< get_results memo
 		return (Pattern cps)
 
 forms :: [Pattern s c r a] -> Grammar s c r a
 forms = form . cases
-
-data Memo0 s c r = Memo0 (STRef s [() -> ST s [Item s c r]]) (STRef s Bool)
-
-make_Memo0 :: ST s (Memo0 s c r)
-make_Memo0 = liftA2 Memo0 (newSTRef []) (newSTRef False)
-
-get_continuations_Memo0 :: Memo0 s c r -> ST s [() -> ST s [Item s c r]]
-get_continuations_Memo0 (Memo0 csr _) = readSTRef csr
-
-get_resulted_ :: Memo0 s c r -> ST s Bool
-get_resulted_ (Memo0 _ rr) = readSTRef rr
-
-push_continuation_Memo0 :: Memo0 s c r -> (() -> ST s [Item s c r]) -> ST s ()
-push_continuation_Memo0 (Memo0 csr _) c = modifySTRef' csr (c :)
-
-set_resulted_Memo0 :: Memo0 s c r -> ST s ()
-set_resulted_Memo0 (Memo0 _ rr) = writeSTRef rr True
-
-form_ :: Pattern s c r () -> Grammar s c r ()
-form_ (Pattern pattern)
-	= do
-		cleanupR <- askForms
-		memoR <- liftForms (newSTRef =<< make_Memo0)
-		let cps continuation
-			= do
-				memo <- readSTRef memoR
-				memo_continuation <- get_continuations_Memo0 memo
-				push_continuation_Memo0 memo continuation
-				case memo_continuation of
-					[]
-						-> do
-							let clear_memoR = writeSTRef memoR =<< make_Memo0
-								in modifySTRef' cleanupR (clear_memoR >>)
-							let some_result _
-								= do
-									set_resulted_Memo0 memo
-									mapSTlist ($ ()) =<< get_continuations_Memo0 memo
-								in pattern some_result
-					_ : _
-						-> do
-							resulted <- get_resulted_ memo
-							case resulted of
-								True  -> continuation ()
-								False -> return []
-		return (Pattern cps)
-
-forms_ :: [Pattern s c r ()] -> Grammar s c r ()
-forms_ = form_ . cases
 
 build :: Grammar s c r r -> ST s (Parser s c r)
 build (Forms grammar)
@@ -235,7 +197,10 @@ parse grammar input
 			parsed <- feed parser input
 			case parsed of
 				Left  s -> return (Left s)
-				Right p -> return (Right (results p)))
+				Right p
+					-> case results p of
+						[] -> return (Left [])
+						rs -> return (Right rs))
 
 anything :: Pattern s c r c
 anything = Pattern (\ k -> return [Scan k])
@@ -282,7 +247,7 @@ many_' :: Pattern s c r a -> Grammar s c r ()
 many_' pattern
 	= mfix
 		(\ grammar
-			-> form_
+			-> form
 				$   pure ()
 				<|> grammar <* pattern)
 
@@ -290,6 +255,6 @@ some_' :: Pattern s c r a -> Grammar s c r ()
 some_' pattern
 	= mfix
 		(\ grammar
-			-> form_
+			-> form
 				$   () <$ pattern
 				<|> grammar <* pattern)
