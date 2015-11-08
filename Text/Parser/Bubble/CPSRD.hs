@@ -19,7 +19,7 @@ import Prelude ()
 import Data.Bool (Bool)
 import Data.Either (Either (Left, Right))
 import Data.Function (($), (.), const)
-import Data.List (null, elem, notElem)
+import Data.List ((++), null, elem, notElem)
 import Data.Eq (Eq ((==)))
 import Data.Functor (Functor (fmap), (<$))
 import Control.Applicative
@@ -59,7 +59,7 @@ cases ps = Pattern (\ k -> ps >>= \ (Pattern p) -> p k)
 
 instance Alternative (Pattern c r) where
 	empty = Pattern (\ _ -> [])
-	p1 <|> p2 = cases [p1, p2]
+	Pattern p1 <|> Pattern p2 = Pattern (\ k -> p1 k ++ p2 k)
 
 satisfy :: (c -> Bool) -> Pattern c r c
 satisfy f = Pattern (\ k -> [Scan (\ c -> if f c then k c else [])])
@@ -116,7 +116,7 @@ noneOf :: Eq c => [c] -> Pattern c r c
 noneOf s = satisfy (\ c -> notElem c s)
 
 many_ :: Pattern c r a -> Pattern c r ()
-many_ pattern = let p = cases [pure (), () <$ pattern <* p] in p
+many_ pattern = let p = pure () <|> () <$ pattern <* p in p
 
 some_ :: Pattern c r a -> Pattern c r ()
 some_ pattern = () <$ pattern <* many_ pattern

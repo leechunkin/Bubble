@@ -76,19 +76,19 @@ satisfy f
 data Parser s c r = Parser [Item s c r] (STRef s (ST s ()))
 
 prepare :: Pattern s c r r -> STRef s (ST s ()) -> ST s (Parser s c r)
-prepare (Pattern pattern) cleanupR
+prepare (Pattern pattern) cleanupV
 	= do
 		items <- pattern (\ r -> return [Result r])
-		return (Parser items cleanupR)
+		return (Parser items cleanupV)
 
 scan :: Parser s c r -> c -> ST s (Parser s c r)
-scan (Parser items_0 cleanupR) c
+scan (Parser items_0 cleanupV) c
 	= do
 		items_1 <- mapSTlist (\ i -> scan_Item i c) items_0
-		cleanup <- readSTRef cleanupR
-		writeSTRef cleanupR (return ())
+		cleanup <- readSTRef cleanupV
+		writeSTRef cleanupV (return ())
 		cleanup
-		return (Parser items_1 cleanupR)
+		return (Parser items_1 cleanupV)
 
 failed :: Parser s c r -> Bool
 failed (Parser p _) = null p
@@ -152,24 +152,24 @@ push_result (Memo _ rsr) c = modifySTRef' rsr (c :)
 form :: Pattern s c r a -> Grammar s c r a
 form (Pattern pattern)
 	= do
-		cleanupR <- askForms
-		memoR <- liftForms (newSTRef =<< make_Memo)
+		cleanupV <- askForms
+		memoV <- liftForms (newSTRef =<< make_Memo)
 		let cps continuation
 			= do
-				memo <- readSTRef memoR
+				memo <- readSTRef memoV
 				memo_continuations <- get_continuations memo
 				push_continuation memo continuation
 				case memo_continuations of
 					[]
 						-> do
-							let clear_MemoR
+							let clear_MemoV
 								= do
-									writeSTRef memoR =<< make_Memo
+									writeSTRef memoV =<< make_Memo
 									clear_results memo
-								in modifySTRef' cleanupR (clear_MemoR >>)
+								in modifySTRef' cleanupV (clear_MemoV >>)
 							let add_result new_result
 								= do
-									memo_latest <- readSTRef memoR
+									memo_latest <- readSTRef memoV
 									if memo == memo_latest
 										then push_result memo new_result
 										else return ()
@@ -218,7 +218,7 @@ noneOf :: Eq c => [c] -> Pattern s c r c
 noneOf s = satisfy (\ c -> notElem c s)
 
 many_ :: Pattern s c r a -> Pattern s c r ()
-many_ pattern = let p = cases [pure (), () <$ pattern <* p] in p
+many_ pattern = let p = pure () <|> () <$ pattern <* p in p
 
 some_ :: Pattern s c r a -> Pattern s c r ()
 some_ pattern = () <$ pattern <* many_ pattern
