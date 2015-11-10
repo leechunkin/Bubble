@@ -12,10 +12,10 @@ grammar
 	= let pattern
 		= do
 			n <- decimal
-			space
+			_ <- match '*'
 			c <- anything
-			space
-			times n (match c)
+			_ <- match '='
+			_ <- times n (match c)
 			return ()
 		in return pattern
 

@@ -11,7 +11,7 @@ module Text.Parser.Bubble
 	Item (Result, Scan),
 	Pattern (Pattern), cases, satisfy,
 	Parser (Parser), prepare, scan, failed, results, feed,
-	Memo (Memo), Forms (Forms), askForms, liftForms,
+	Memo (Memo), Forms (Forms), runForms, askForms, liftForms,
 	Grammar, form, forms, build, parse,
 	anything, match, string, oneOf, noneOf,
 	many_, some_, many', some', many_', some_')
@@ -106,6 +106,9 @@ feed parser input =
 
 newtype Forms s a = Forms (STRef s (ST s()) -> ST s a)
 
+runForms :: Forms s a -> STRef s (ST s()) -> ST s a
+runForms (Forms f) = f
+
 instance Functor (Forms s) where
 	fmap f (Forms x) = Forms (fmap f . x)
 
@@ -115,10 +118,10 @@ instance Applicative (Forms s) where
 
 instance Monad (Forms s) where
 	return = pure
-	Forms x >>= f = Forms (\ e -> x e >>= ((\ (Forms y) -> y e) . f))
+	Forms x >>= f = Forms (\ e -> x e >>= (flip runForms e . f))
 
 instance MonadFix (Forms s) where
-	mfix f = Forms (\ e -> fixST ((\ (Forms r') -> r' e) . f))
+	mfix f = Forms (\ e -> fixST (flip runForms e . f))
 
 askForms :: Forms s (STRef s (ST s ()))
 askForms = Forms return
