@@ -2,7 +2,7 @@
 Basic Regular Expression
 -}
 
-{-# LANGUAGE Rank2Types, RecursiveDo #-}
+{-# LANGUAGE RecursiveDo #-}
 
 module Text.Parser.Bubble.RegEx
 	(
@@ -23,8 +23,9 @@ import Data.Function (($), (.))
 import Data.List ((++), concat, foldl')
 import Data.Functor ((<$>), (<$))
 import Control.Applicative
-	(Applicative (pure, (<*>), (<*), (*>)), liftA, liftA2, liftA3,
-	(<|>), many, some)
+	(
+		Applicative (pure, (<*>), (<*), (*>)), liftA, liftA2, liftA3,
+		(<|>), many, some)
 import Control.Monad (Monad (return), (=<<), liftM, liftM2, liftM3, sequence)
 import Control.Monad.State
 	(State, state, runState, evalState, get, put, modify)
@@ -185,27 +186,27 @@ regex config
 						<$ match (escape config)
 						<*> noneOf (quotedCharacters config startP endP)
 					]
-		let charset = some (satisfy (bracket1 config /=))
 		bracket <- forms
-			[ (\ s -> returnT (returnRG (returnRT . (: []) <$> oneOf s)))
+			[ (\ c s -> returnT (returnRG (returnRT . (: "") <$> oneOf (c : s))))
 				<$ meta bracket0
-				<*> charset
+				<*> noneOf [bracket1 config, inverse config]
+				<*> many (noneOf [inverse config])
 				<* match (bracket1 config)
-			, (\ c s -> returnT (returnRG (returnRT . (: []) <$> oneOf (c : s))))
+			, (\ c s -> returnT (returnRG (returnRT . (: "") <$> oneOf (c : s))))
 				<$ meta bracket0
 				<*> match (bracket1 config)
-				<*> charset
+				<*> many (noneOf [bracket1 config])
 				<* match (bracket1 config)
-			, (\ s -> returnT (returnRG (returnRT . (: []) <$> noneOf s)))
+			, (\ s -> returnT (returnRG (returnRT . (: "") <$> noneOf s)))
 				<$ meta bracket0
 				<* match (inverse config)
-				<*> charset
+				<*> some (noneOf [bracket1 config])
 				<* match (bracket1 config)
-			, (\ c s -> returnT (returnRG (returnRT . (: []) <$> noneOf (c : s))))
+			, (\ c s -> returnT (returnRG (returnRT . (: "") <$> noneOf (c : s))))
 				<$ meta bracket0
 				<* match (inverse config)
 				<*> match (bracket1 config)
-				<*> charset
+				<*> many (noneOf [bracket1 config])
 				<* match (bracket1 config)
 			]
 		let atom startP endP
