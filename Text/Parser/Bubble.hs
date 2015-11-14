@@ -11,7 +11,7 @@ module Text.Parser.Bubble
 	Item (Result, Scan),
 	Pattern (Pattern), cases, satisfy,
 	Parser (Parser), prepare, scan, failed, results, feed,
-	Memo (Memo), Forms (Forms), runForms, askForms, liftForms,
+	Memo (Memo), Form (Form), runForm, askForm, liftForm,
 	Grammar, form, forms, build, parse,
 	anything, match, string, oneOf, noneOf,
 	many_, some_, many', some', many_', some_')
@@ -29,7 +29,10 @@ import Control.Applicative
 		Applicative (pure, (<*>)), liftA2,
 		Alternative (empty, (<|>)), (<*))
 import Data.Traversable (traverse)
-import Control.Monad (Monad (return, (>>=)), (=<<), (>>), liftM, liftM2)
+import Control.Monad
+	(
+		Monad (return, (>>=)), (=<<), (>>), liftM, liftM2,
+		MonadPlus (mzero, mplus))
 import Control.Monad.Fix (MonadFix (mfix))
 import Control.Monad.ST (ST, runST, fixST)
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
@@ -68,6 +71,10 @@ instance Alternative (Pattern s c r) where
 	empty = Pattern (\ _ -> return [])
 	Pattern p1 <|> Pattern p2 = Pattern (\ k -> liftM2 (++) (p1 k) (p2 k))
 
+instance MonadPlus (Pattern s c r) where
+	mzero = empty
+	mplus = (<|>)
+
 satisfy :: (c -> Bool) -> Pattern s c r c
 satisfy f
 	= Pattern
@@ -104,32 +111,32 @@ feed parser input =
 			[]    -> return (Right parser)
 			c : s -> (\ p -> feed p s) =<< scan parser c
 
-newtype Forms s a = Forms (STRef s (ST s()) -> ST s a)
+newtype Form s a = Form (STRef s (ST s()) -> ST s a)
 
-runForms :: Forms s a -> STRef s (ST s()) -> ST s a
-runForms (Forms f) = f
+runForm :: Form s a -> STRef s (ST s()) -> ST s a
+runForm (Form f) = f
 
-instance Functor (Forms s) where
-	fmap f (Forms x) = Forms (fmap f . x)
+instance Functor (Form s) where
+	fmap f (Form x) = Form (fmap f . x)
 
-instance Applicative (Forms s) where
-	pure = Forms . const . return
-	Forms f <*> Forms x = Forms (\ e -> f e <*> x e)
+instance Applicative (Form s) where
+	pure = Form . const . return
+	Form f <*> Form x = Form (\ e -> f e <*> x e)
 
-instance Monad (Forms s) where
+instance Monad (Form s) where
 	return = pure
-	Forms x >>= f = Forms (\ e -> x e >>= (flip runForms e . f))
+	Form x >>= f = Form (\ e -> x e >>= (flip runForm e . f))
 
-instance MonadFix (Forms s) where
-	mfix f = Forms (\ e -> fixST (flip runForms e . f))
+instance MonadFix (Form s) where
+	mfix f = Form (\ e -> fixST (flip runForm e . f))
 
-askForms :: Forms s (STRef s (ST s ()))
-askForms = Forms return
+askForm :: Form s (STRef s (ST s ()))
+askForm = Form return
 
-liftForms :: ST s a -> Forms s a
-liftForms = Forms . const
+liftForm :: ST s a -> Form s a
+liftForm = Form . const
 
-type Grammar s c r a = Forms s (Pattern s c r a)
+type Grammar s c r a = Form s (Pattern s c r a)
 
 data Memo s c r a = Memo (STRef s [a -> ST s [Item s c r]]) (STRef s [a])
 	deriving Eq
@@ -155,8 +162,8 @@ push_result (Memo _ rsr) c = modifySTRef' rsr (c :)
 form :: Pattern s c r a -> Grammar s c r a
 form (Pattern pattern)
 	= do
-		cleanupV <- askForms
-		memoV <- liftForms (newSTRef =<< make_Memo)
+		cleanupV <- askForm
+		memoV <- liftForm (newSTRef =<< make_Memo)
 		let cps continuation
 			= do
 				memo <- readSTRef memoV
@@ -186,7 +193,7 @@ forms :: [Pattern s c r a] -> Grammar s c r a
 forms = form . cases
 
 build :: Grammar s c r r -> ST s (Parser s c r)
-build (Forms grammar)
+build (Form grammar)
 	= do
 		cleanup <- newSTRef (return ())
 		pattern <- grammar cleanup
