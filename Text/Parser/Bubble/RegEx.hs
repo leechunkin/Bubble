@@ -6,7 +6,7 @@ Basic Regular Expression
 
 module Text.Parser.Bubble.RegEx
 	(
-		Config, basic, extended,
+		Config, nomagic, basic, extended,
 		RegExRT, RegExRP, RegExRG, RegExT,
 		regex)
 where
@@ -48,6 +48,24 @@ data Config
 		question  :: (Bool, Char)
 	}
 
+nomagic :: Config
+nomagic
+	= Config {
+		escape    = '\\',
+		circumfex = (True,  '^'),
+		dollar    = (True,  '$'),
+		star      = (False, '*'),
+		dot       = (False, '.'),
+		bracket0  = (False, '['),
+		bracket1  = ']',
+		inverse   = '^',
+		paren0    = (False, '('),
+		paren1    = (False, ')'),
+		bar       = (False, '|'),
+		plus      = (False, '+'),
+		question  = (False, '?')
+	}
+
 basic :: Config
 basic
 	= Config {
@@ -70,11 +88,11 @@ extended :: Config
 extended
 	= Config {
 		escape    = '\\',
-		circumfex = (True,  '^'),
-		dollar    = (True,  '$'),
-		star      = (True,  '*'),
-		dot       = (True,  '.'),
-		bracket0  = (True,  '['),
+		circumfex = (True, '^'),
+		dollar    = (True, '$'),
+		star      = (True, '*'),
+		dot       = (True, '.'),
+		bracket0  = (True, '['),
 		bracket1  = ']',
 		inverse   = '^',
 		paren0    = (True, '('),
@@ -85,7 +103,7 @@ extended
 	}
 
 specialCharacters :: [Config -> (Bool, Char)]
-specialCharacters = [star, dot, bracket0, paren0, paren1, bar, question, plus]
+specialCharacters = [star, dot, bracket0, paren0, paren1, bar, plus, question]
 
 metaCharacters :: Config -> Bool -> Bool -> [Char]
 metaCharacters config startP endP
@@ -174,9 +192,9 @@ regex config
 					(True,  c) -> () <$ match c
 					(False, c) -> () <$ match (escape config) <* match c
 			mapseq f x = f <$> sequence x
-			append2 = liftM2 (liftM2 (liftA2 (liftM2 (++))))
-			append3 = liftM3 (liftM3 (liftA3 (liftM3 (\ a b c -> a ++ b ++ c))))
-			padT = returnT (liftM (emptyRT <$) (many_' anything))
+			append2' = liftM2 (liftM2 (liftA2 (liftM2 (++))))
+			append3' = liftM3 (liftM3 (liftA3 (liftM3 (\ a b c -> a ++ b ++ c))))
+			pad' = returnT (liftM (emptyRT <$) (many_' anything))
 		let ordinary startP endP
 			= let char' c = returnT (returnRG (returnRT . (: []) <$> match c))
 				in cases
@@ -211,7 +229,7 @@ regex config
 			]
 		let atom startP endP
 			= let
-				pad' pattern
+				padRP pattern
 					= case startP of
 						True
 							-> case endP of
@@ -221,13 +239,20 @@ regex config
 							-> case endP of
 								True  ->                  pattern <* many anything
 								False ->                  pattern
-				any' = returnT (returnRG (returnRT . (: []) <$> anything))
-				in liftM (liftM pad') <$> cases
+				anyRP = returnT (returnRG (returnRT . (: []) <$> anything))
+				in liftM (liftM padRP) <$> cases
 					[ ordinary startP endP
-					, any' <$ meta dot
+					, anyRP <$ meta dot
 					, bracket
 					]
 		let
+			branches' reT brT
+				= state
+					(\ s
+						-> let
+							(reRG, s2re) = runState reT s
+							(brRG, s2br) = runState brT s
+							in (liftM2 (<|>) reRG brRG, max s2re s2br))
 			group' pT
 				= do
 					n <- get
@@ -242,70 +267,96 @@ regex config
 			repeat0' = liftM ((liftM (liftA (mapseq concat))) . (many' =<<))
 			repeat1' = liftM ((liftM (liftA (mapseq concat))) . (some' =<<))
 			optional' = liftM (liftM (emptyRP <|>))
+		nonnullpiece <- forms
+			[ atom False False
+			, group' <$ meta paren0 <*> nonnullexpr <* meta paren1
+			, append2'
+				<$> nonnullpiece
+				<*> (repeat0' <$> nonnullpiece <* meta star)
+			, repeat1' <$> nonnullpiece <* meta plus
+			, append2'
+				<$> nonnullpiece
+				<*> (optional' <$> nonnullpiece <* meta question)
+			]
+		{-
+		nonnullbranch <- forms
+			[ append2' <$> nonnullbranch <*> nonnullpiece
+			, pure emptyT
+			]
+		-}
+		nonnullbranch
+			<- liftM (liftA (mapseq (mapseq (mapseq (mapseq concat)))))
+				(some' nonnullpiece)
+		nonnullexpr <- forms
+			[ nonnullbranch
+			, branches' <$> nonnullexpr <* meta bar <*> nonnullbranch
+			]
+		repeating <- forms
+			[ repeat0' <$> nonnullpiece <* meta star
+			, repeat1' <$> nonnullpiece <* meta plus
+			, optional' <$> nonnullpiece <* meta question
+			]
 		piece00 <- forms
 			[ atom False False
-			, group' <$ meta paren0 <*> branch00 <* meta paren1
-			, repeat0' <$> piece00 <* meta star
-			, repeat1' <$> piece00 <* meta plus
-			, optional' <$> piece00 <* meta question
+			, group' <$ meta paren0 <*> expr00 <* meta paren1
+			, repeating
 			]
 		piece10 <- forms
 			[ atom True False
-			, group' <$ meta paren0 <*> branch10 <* meta paren1
-			, repeat0' <$> piece10 <* meta star
-			, repeat1' <$> piece10 <* meta plus
-			, optional' <$> piece10 <* meta question
+			, group' <$ meta paren0 <*> expr10 <* meta paren1
+			, repeating
 			]
 		piece01 <- forms
 			[ atom False True
-			, group' <$ meta paren0 <*> branch01 <* meta paren1
-			, repeat0' <$> piece00 <* meta star
-			, repeat1' <$> piece00 <* meta plus
-			, optional' <$> piece00 <* meta question
+			, group' <$ meta paren0 <*> expr01 <* meta paren1
+			, repeating
 			]
 		piece11 <- forms
 			[ atom True True
-			, group' <$ meta paren0 <*> branch11 <* meta paren1
-			, repeat0' <$> piece10 <* meta star
-			, repeat1' <$> piece10 <* meta plus
-			, optional' <$> piece10 <* meta question
+			, group' <$ meta paren0 <*> expr11 <* meta paren1
+			, repeating
 			]
 		{-
 		branch00 <- forms
-			[ append2 <$> branch00 <*> piece00
+			[ append2' <$> branch00 <*> piece00
 			, pure emptyT
 			]
 		-}
 		branch00
 			<- liftM (liftA (mapseq (mapseq (mapseq (mapseq concat)))))
 				(many' piece00)
-		let branch10 = cases
+		branch10 <- forms
 			[ meta circumfex *> branch00
-			, append2 <$> piece10 <*> branch00
+			, append2' <$> piece10 <*> branch00
 			, pure emptyT
 			]
-		let branch01 = cases
+		branch01 <- forms
 			[ branch00 <* meta dollar
-			, append2 <$> branch00 <*> piece01
+			, append2' <$> branch00 <*> piece01
 			, pure emptyT
 			]
-		let branch11 = cases
+		branch11 <- forms
 			[ meta circumfex *> branch01
 			, branch10 <* meta dollar
-			, append3 <$> piece10 <*> branch00 <*> piece01
+			, append3' <$> piece10 <*> branch00 <*> piece01
 			, piece11
-			, padT <$ meta dollar
-			, pure padT
+			, pad' <$ meta dollar
+			, pure pad'
 			]
-		re <- forms
+		expr00 <- forms
+			[ branch00
+			, branches' <$> expr00 <* meta bar <*> branch00
+			]
+		expr10 <- forms
+			[ branch10
+			, branches' <$> expr10 <* meta bar <*> branch10
+			]
+		expr01 <- forms
+			[ branch01
+			, branches' <$> expr01 <* meta bar <*> branch01
+			]
+		expr11 <- forms
 			[ branch11
-			, (\ reT brT
-				-> state
-					(\ s
-						-> let
-							(reRG, s2re) = runState reT s
-							(brRG, s2br) = runState brT s
-							in (liftM2 (<|>) reRG brRG, max s2re s2br :: Word)))
-				<$> re <* meta bar <*> branch11
+			, branches' <$> expr11 <* meta bar <*> branch11
 			]
-		return ((\ s -> evalState s (0 :: Word)) <$> re)
+		return ((\ s -> evalState s 0) <$> expr11)

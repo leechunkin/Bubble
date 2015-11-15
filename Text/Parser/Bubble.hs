@@ -91,10 +91,10 @@ prepare (Pattern pattern) cleanupV
 scan :: Parser s c r -> c -> ST s (Parser s c r)
 scan (Parser items_0 cleanupV) c
 	= do
-		items_1 <- mapSTlist (\ i -> scan_Item i c) items_0
 		cleanup <- readSTRef cleanupV
 		writeSTRef cleanupV (return ())
 		cleanup
+		items_1 <- mapSTlist (\ i -> scan_Item i c) items_0
 		return (Parser items_1 cleanupV)
 
 failed :: Parser s c r -> Bool
