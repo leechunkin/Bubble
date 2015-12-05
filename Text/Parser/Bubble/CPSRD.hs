@@ -5,12 +5,12 @@ Using simple recursive descent method in continuation-passing style
 Language: GHC 7.6, Haskell 2010
 -}
 
-module Text.Parser.Bubble.CPS
+module Text.Parser.Bubble.CPSRD
 (
 	Item (Result, Scan),
 	Pattern (Pattern), cases, satisfy,
 	Parser, prepare, scan, failed, results, feed,
-	Grammar, forms, build, parse,
+	Grammar, form, forms, build, parse,
 	anything, match, string, oneOf, noneOf,
 	many_, some_, many', some', many_', some_')
 where
@@ -88,8 +88,11 @@ feed parser input =
 
 type Grammar s c r a = Identity (Pattern c r a)
 
+form :: Pattern c r a -> Grammar s c r a
+form = return
+
 forms :: [Pattern c r a] -> Grammar s c r a
-forms = return . cases
+forms = form . cases
 
 build :: Grammar s c r r -> Parser c r
 build = prepare . runIdentity

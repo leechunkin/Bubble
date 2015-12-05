@@ -87,7 +87,7 @@ str
 	= let
 		unescaped = noneOf "\"\\"
 		hex4ToInt a b c d
-			=	shift (digitToInt a) 12
+			= shift (digitToInt a) 12
 				+ shift (digitToInt b) 8
 				+ shift (digitToInt c) 4
 				+ digitToInt d
