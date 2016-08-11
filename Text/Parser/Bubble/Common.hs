@@ -19,7 +19,7 @@ import Prelude
 		Integral(toInteger),
 		Num (fromInteger, (+), (*), negate),
 		Integer, Double,
-		($!), fromIntegral, pred, (^^))
+		($!), pred, (^^))
 import Data.Bool (Bool (True, False), otherwise, not, (&&))
 import Data.Char
 	(

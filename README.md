@@ -8,8 +8,8 @@ It uses a modified Earley parser algorithm.
 * All context-free grammars can be parsed, including ambiguous and
 unambigous grammars.
 * No backtracking is used.
-Linear time for almost all LR(k) grammars, and cubic time for worst
-case ambigouous grammars.
+Linear time for most LR(k) grammars, and cubic time for worst case
+ambigouous grammars.
 * The grammar is built on-the-fly.
 It provides good flexiblity to use.
 * No lexer is needed (lexerless parsing) although you can use one.
@@ -23,8 +23,8 @@ of the parser and the ST monad underlayer.
 
 ## Compatibility and dependencies
 
-The library is written in Haskell 2010 with Rank2Types extension.
-Rank2Types is used for ST monad.
-RecursiveDo is suggested for convenience in using.
+The library is written in Haskell 2010 with Rank2Types extension for
+ST monad.
+RecursiveDo extension is suggested for convenience using.
 
-GHC 7.6 base library is used in development.
+GHC 7.6-7.10 are used for development.

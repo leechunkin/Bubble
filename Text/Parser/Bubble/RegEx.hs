@@ -13,7 +13,7 @@ where
 
 import Text.Parser.Bubble
 
-import Prelude (undefined, (/=), succ, pred, (+), (*))
+import Prelude (succ, pred)
 import Data.Bool (Bool (True, False), not, (&&))
 import Data.Char (Char)
 import Data.Word (Word)
@@ -253,6 +253,7 @@ regex config
 							(reRG, s2re) = runState reT s
 							(brRG, s2br) = runState brT s
 							in (liftM2 (<|>) reRG brRG, max s2re s2br))
+			group' :: RegExT s r -> RegExT s r
 			group' pT
 				= do
 					n <- get
